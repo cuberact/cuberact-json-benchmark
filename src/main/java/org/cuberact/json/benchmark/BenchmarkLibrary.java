@@ -18,6 +18,7 @@ package org.cuberact.json.benchmark;
 
 import com.alibaba.fastjson.JSON;
 import com.cedarsoftware.util.io.JsonReader;
+import com.eclipsesource.json.Json;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cuberact.json.parser.JsonParser;
 import org.json.JSONArray;
@@ -65,7 +66,8 @@ public enum BenchmarkLibrary {
         }
     }),
     ORG_JSON(JSONArray::new),
-    JSON_IO(JsonReader::jsonToJava);
+    JSON_IO(JsonReader::jsonToJava),
+    RAP_MINIMAL_JSON(Json::parse);
 
     private final JsonLibrary jsonLibrary;
     private String indentedName = null;
