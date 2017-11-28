@@ -16,6 +16,8 @@
 
 package org.cuberact.json.benchmark;
 
+import org.HdrHistogram.Histogram;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -37,6 +39,8 @@ public class Benchmark {
             new BenchmarkInput(10000000),
     };
 
+    private static Object fakeResult;
+
     public static void main(String[] args) throws Throwable {
         Thread benchmarkThread = new Thread(new BenchmarkRunnable());
         benchmarkThread.setPriority(Thread.MAX_PRIORITY);
@@ -48,27 +52,33 @@ public class Benchmark {
         @Override
         public void run() {
             try {
-                System.out.println(BenchmarkText.benchmarkHeader());
+                System.out.println(
+                        "--------------------------------------------\n" +
+                                "BENCHMARK - JSON DESERIALIZATION FROM STRING\n" +
+                                "--------------------------------------------\n" +
+                                "Warm up:");
                 BenchmarkInput warmUpInput = new BenchmarkInput(1234567);
                 System.out.println(warmUpInput);
                 for (BenchmarkLibrary benchmarkLibrary : BenchmarkLibrary.values()) {
-                    long time = benchmark(benchmarkLibrary, 30, warmUpInput.getJsonAsString());
-                    print(benchmarkLibrary, time, warmUpInput.getJsonAsString().length());
+                    Histogram histogram = new Histogram(1, 80_000_000, 3);
+                    long time = benchmark(benchmarkLibrary, 30, warmUpInput.getJsonAsString(), histogram);
+                    print(benchmarkLibrary, time, warmUpInput.getJsonAsString().length(), histogram);
                 }
                 Map<BenchmarkLibrary, Statistics> statistics = new HashMap<>();
                 for (int benchmarkIteration = 0; benchmarkIteration < BENCHMARK_ITERATIONS; benchmarkIteration++) {
                     System.gc();
-                    System.out.println(BenchmarkText.gcAndWaitText());
+                    System.out.println("\nSystem.gc() and sleep for 5 sec\n");
                     Thread.sleep(5000);
-                    System.out.println(BenchmarkText.benchmarkIterationHeader(benchmarkIteration + 1, BENCHMARK_ITERATIONS));
+                    System.out.println("BENCHMARK - iteration " + (benchmarkIteration + 1) + "/" + BENCHMARK_ITERATIONS + " ************************************************************");
                     for (BenchmarkInput input : inputs) {
-                        System.out.println(BenchmarkText.separatorLine());
+                        System.out.println("-------------------------------------------------------------------------------------");
                         System.out.println(input);
                         long bestTime = Long.MAX_VALUE;
                         BenchmarkLibrary bestLibrary = null;
                         for (BenchmarkLibrary library : BenchmarkLibrary.values()) {
-                            long time = benchmark(library, 100, input.getJsonAsString());
-                            print(library, time, input.getJsonAsString().length());
+                            Histogram histogram = new Histogram(1, 80_000_000, 3);
+                            long time = benchmark(library, 100, input.getJsonAsString(), histogram);
+                            print(library, time, input.getJsonAsString().length(), histogram);
                             if (time < bestTime) {
                                 bestTime = time;
                                 bestLibrary = library;
@@ -80,14 +90,17 @@ public class Benchmark {
                         statistics.computeIfAbsent(bestLibrary, Statistics::new).wins += 1;
                     }
                 }
-                System.out.println(BenchmarkText.resultHeader());
+                System.out.println("\nRESULT: *****************************************************************************\n");
                 List<Statistics> sortedBySumOfTime = new ArrayList<>(statistics.values());
                 Collections.sort(sortedBySumOfTime);
                 int order = 0;
                 for (Statistics stats : sortedBySumOfTime) {
                     String w = String.valueOf(stats.wins);
                     System.out.print(++order + ". [wins: " + w + "]" + "    ".substring(0, 4 - w.length()));
-                    print(stats.benchmarkLibrary, stats.timeSum, stats.charsSum);
+                    print(stats.benchmarkLibrary, stats.timeSum, stats.charsSum, null);
+                }
+                if (fakeResult == null) { // only for work with this variable
+                    System.out.println("Something wrong");
                 }
             } catch (Throwable t) {
                 throw new RuntimeException(t);
@@ -95,18 +108,38 @@ public class Benchmark {
         }
     }
 
-    private static long benchmark(BenchmarkLibrary benchmarkLibrary, int repeatCount, String json) throws Throwable {
+    private static long benchmark(BenchmarkLibrary benchmarkLibrary, int repeatCount, String json, Histogram histogram) throws Throwable {
         long times = 0;
         for (int i = 0; i < repeatCount; i++) {
             Thread.sleep(10);
             long time = System.nanoTime();
-            benchmarkLibrary.getJsonLibrary().deserialize(json);
-            times += (System.nanoTime() - time);
+            fakeResult = benchmarkLibrary.getJsonLibrary().deserialize(json);
+            time = System.nanoTime() - time;
+            times += time;
+            histogram.recordValue(time / 1000);
         }
         return times / repeatCount;
     }
 
-    private static void print(BenchmarkLibrary benchmarkLibrary, long time, long jsonSize) throws InterruptedException {
+    private static String minAvgMax(Histogram avg) {
+        if (avg == null || avg.getTotalCount() == 0) {
+            return "n/a";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("min/avg/max = ");
+        BigDecimal bdTime = new BigDecimal(avg.getMinValue() / 1000000.0).setScale(9, RoundingMode.HALF_UP);
+        sb.append(bdTime.toPlainString());
+        sb.append(" / ");
+        bdTime = new BigDecimal(avg.getMean() / 1000000.0).setScale(9, RoundingMode.HALF_UP);
+        sb.append(bdTime.toPlainString());
+        sb.append(" / ");
+        bdTime = new BigDecimal(avg.getMaxValueAsDouble() / 1000000.0).setScale(9, RoundingMode.HALF_UP);
+        sb.append(bdTime.toPlainString());
+        sb.append(" sec");
+        return sb.toString();
+    }
+
+    private static void print(BenchmarkLibrary benchmarkLibrary, long time, long jsonSize, Histogram histogram) throws InterruptedException {
         StringBuilder sb = new StringBuilder("  ");
         sb.append(benchmarkLibrary.indentedName());
         sb.append(" - ");
@@ -124,7 +157,10 @@ public class Benchmark {
         } else if (before < 100) {
             sb.append(" ");
         }
-        sb.append(megaCharsPerSec.toPlainString()).append(" mega chars per sec]");
+        sb.append(megaCharsPerSec.toPlainString()).append(" MegaChar/s] ");
+        if (histogram != null) {
+            sb.append(minAvgMax(histogram));
+        }
         System.out.println(sb.toString());
     }
 

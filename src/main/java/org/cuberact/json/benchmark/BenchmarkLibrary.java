@@ -17,12 +17,8 @@
 package org.cuberact.json.benchmark;
 
 import com.alibaba.fastjson.JSON;
-import com.cedarsoftware.util.io.JsonReader;
-import com.eclipsesource.json.Json;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cuberact.json.parser.JsonParser;
-import org.json.JSONArray;
-import org.json.simple.parser.JSONParser;
 
 import java.io.IOException;
 
@@ -40,7 +36,6 @@ public enum BenchmarkLibrary {
         }
     }),
     FAST_JSON(JSON::parse),
-
     JACKSON_DATABIND(new JsonLibrary() {
         ObjectMapper mapper = new ObjectMapper();
 
@@ -56,18 +51,7 @@ public enum BenchmarkLibrary {
         public Object deserialize(String jsonAsString) throws Throwable {
             return gsonParser.parse(jsonAsString);
         }
-    }),
-    JSON_SIMPLE(new JsonLibrary() {
-        JSONParser jsonSimpleParser = new JSONParser();
-
-        @Override
-        public Object deserialize(String jsonAsString) throws Throwable {
-            return jsonSimpleParser.parse(jsonAsString);
-        }
-    }),
-    ORG_JSON(JSONArray::new),
-    JSON_IO(JsonReader::jsonToJava),
-    RAP_MINIMAL_JSON(Json::parse);
+    });
 
     private final JsonLibrary jsonLibrary;
     private String indentedName = null;
